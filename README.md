@@ -7,68 +7,54 @@ Part of the **Cocarr Enterprise Platform** ([CoCarr-org](https://github.com/CoCa
 Topics: `notifications`, `email`, `push`, `sms`
 
 ## Purpose
-Delivers transactional and campaign notifications across email, push and SMS channels.
+Delivers transactional and campaign notifications across **email, SMS and push**,
+with reusable templates (`{{var}}` interpolation) and a delivery record per send.
+Sits behind the API Gateway at `/v1/notify/*`. It's the natural consumer of the
+Identity service's device push tokens and the password/reset links produced by
+Identity and Workspace.
 
-## Architecture
-This repository is one component of the Cocarr platform, a service-oriented
-system fronted by the API gateway. Requests flow through the gateway to the
-identity, authorization, workspace, core and notification services, each backed
-by its own database. See [`cocarr-docs`](https://github.com/CoCarr-org/cocarr-docs)
-for the full platform architecture and Architecture Decision Records.
+## Channels
+| Channel | Provider | Env |
+|---|---|---|
+| email | SendGrid | `SENDGRID_API_KEY`, `EMAIL_FROM` |
+| sms | MSG91 | `MSG_KEY`, `MSG91_SENDER` |
+| push | Firebase Cloud Messaging | `ADMIN_SERVICE_ACCOUNT` |
+
+**Each channel SIMULATES when unconfigured** (logs + marks the record
+`simulated`) so the service runs end-to-end in development without provider
+accounts. A provider failure is **recorded** on the notification (status
+`failed`) rather than thrown — the caller always gets the record and its status.
 
 ## Technology Stack
-- Node.js
-- Express
-- Queue workers
-- Jest
+- Node.js + Express, Sequelize (MySQL)
+- @sendgrid/mail, axios (MSG91), firebase-admin (FCM)
+- express-validator, winston, swagger-ui-express
 
-## Folder Structure
-```
-src/     # Channel adapters, templates, dispatch workers
-docs/    # Channel and template documentation
-tests/   # Unit and integration tests
-.github/ # Issue/PR templates, workflows, CODEOWNERS
-```
+## Key endpoints
+| Method | Path | What |
+|---|---|---|
+| GET | `/v1/health` | liveness + per-channel config status |
+| GET | `/v1/docs` | Swagger UI |
+| POST | `/v1/send` | send (`{ channel, to, templateKey?\|body, vars? }`) |
+| POST | `/v1/notifications/send` | same (namespaced alias) |
+| GET | `/v1/notifications` | delivery records (status, channel, principalId) |
+| POST | `/v1/notifications/:id/retry` | re-attempt a failed send |
+| CRUD | `/v1/templates` | message templates |
 
 ## Getting Started
 ```bash
-# Clone
 git clone https://github.com/CoCarr-org/cocarr-notification-service.git
-cd cocarr-notification-service
-
-# Work from the develop branch
-git checkout develop
+cd cocarr-notification-service && git checkout develop
+cp .env.example .env && npm install && npm run dev   # :3070/v1/health, docs /v1/docs
 ```
-Copy `.env.example` to `.env` where applicable and install dependencies with
-your package manager (`pnpm install`).
-
-## Development
-- Format: `pnpm prettier --write .`
-- Lint: `pnpm lint`
-- Test: `pnpm test`
-
-Editor settings, Prettier, ESLint, EditorConfig and VS Code configuration ship
-with the repository for a consistent developer experience.
-
-## Contributing
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) and use the issue and pull
-request templates. All changes require CODEOWNER review.
+With no provider keys set, sends succeed as `simulated` and are logged.
 
 ## Branch Strategy
-| Branch    | Purpose                                   | Protected |
-|-----------|-------------------------------------------|-----------|
-| `main`    | Always-deployable production baseline     | Yes       |
-| `develop` | Integration branch for feature work       | No        |
-| `release` | Release-candidate stabilisation branch    | Yes       |
-
-Feature branches: `feature/<description>` from `develop`.
+`main` (protected) · `develop` (working) · `release`.
 
 ## Deployment
-Containerised and deployed to Railway.
-
-## Security
-See [SECURITY.md](SECURITY.md) for vulnerability reporting. Dependabot alerts
-and secret scanning are enabled where supported.
+Docker + Railway (`railway.json`, healthcheck `/v1/health`) from `develop`.
+Reached via `cocarr-api-gateway` (`/v1/notify`). See [`CLAUDE.md`](CLAUDE.md).
 
 ## License
-Licensed under the [MIT License](LICENSE).
+[MIT](LICENSE).
