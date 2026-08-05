@@ -12,6 +12,19 @@ Gateway upstream: `/v1/notify`.
    `simulated`, or `failed`. **A provider error is recorded, not thrown** — the
    caller gets the record and its status.
 
+## Authentication fails closed
+`authMiddleware` has three modes: a trusted `x-gateway-key` edge (identity
+headers minted by cocarr-api-gateway — no second Firebase verification), a dev
+bypass requiring `AUTH_DISABLED=true` **and** `NODE_ENV !== 'production'`, and
+direct bearer-token verification. With neither `GATEWAY_KEY` nor
+`ADMIN_SERVICE_ACCOUNT`, every authenticated route answers **503
+`AUTH_UNAVAILABLE`**; a **non-matching** gateway key is a hard deny, never a
+fall-through. `GET /v1/health` reports the live mode in its `auth` field.
+
+Unconfigured credentials previously attached a synthetic `dev` actor, so a
+missing or malformed service account in production turned this service into an
+open API with no error anywhere.
+
 ## Channels simulate when unconfigured
 `src/channels/{email,sms,push}.js` each expose `isConfigured()` + `send()`. With
 no provider env set they log and return `{ simulated: true }`, and the record's
